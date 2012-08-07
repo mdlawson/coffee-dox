@@ -16,11 +16,15 @@ exports.version = "0.3.1"
 exports.parseComments = (coffee, options) ->
   options = options or {}
   coffee = coffee.replace(/\r\n/g, "\n")
+  coffee = coffee.replace(/\t/g, "  ")
   comments = []
   raw = options.raw
   comment = undefined
   buf = ""
+  codeBuf = ""
+  commentBuf = ""
   ignore = undefined
+  escaped = false
   withinMultiline = false
   withinSingle = false
   prevIndent = 0
@@ -30,51 +34,65 @@ exports.parseComments = (coffee, options) ->
   len = coffee.length
 
   while i < len
-    
+
     # handle indents
     if coffee[i - 1] is "\n"
       j = i
       indent = 0
-      while coffee[j] is " " or coffee[j] is "\t"
+      while coffee[j] is " "
         indent++
         j++
 
+    # handle escape chars
+    if coffee[i] is escaped then escaped = false
+    else if coffee[i] is '"' or coffee[i] is "'" or coffee[i] is '`' then escaped = coffee[i]
+
+
     # start comment
-    if not withinMultiline and not withinSingle and "#" is coffee[i]
+    if not withinMultiline and not withinSingle and "#" is coffee[i] and not escaped
       withinSingle = true
       buf += coffee[i]
       #ignore = "!" is coffee[i]
-    
-    # end comment
-    else if withinMultiline and not withinSingle and "\n" is coffee[i] and "#" isnt coffee[i + 1 + indent]
-      buf = buf.replace(/^ *# ?/gm, "")
-      comment = exports.parseComment(buf, options)
-      comment.ignore = ignore
-      comments.push comment
-      withinMultiline = ignore = false
-      buf = ""
-      
+
     # upgrade single to multiline
-    else if withinSingle and not withinMultiline and "\n" is coffee[i] and "#" is coffee[i + 1 + indent]
-      i++
+    else if not withinMultiline and withinSingle and "\n" is coffee[i] and "#" is coffee[i + 1 + indent] and not escaped
+      buf += coffee[i]
+      commentBuf += buf
+      buf = ""
       # code following previous comment
-      if buf.trim().length
+      if codeBuf.trim().length
         comment = comments[comments.length - 1]
         if comment
-          comment.code = code = buf.trim()
+          comment.code = code = codeBuf.trim()
           comment.ctx = exports.parseCodeContext(code)
-        buf = ""
+        codeBuf = ""
       withinSingle = false
       withinMultiline = true
     
+    # end comment
+    else if withinMultiline and not withinSingle and "\n" is coffee[i] and "#" isnt coffee[i + 1 + indent] and not escaped
+      commentBuf = commentBuf.replace(/^ *# ?/gm, "")
+      comment = exports.parseComment(commentBuf, options)
+      #comment.ignore = ignore
+      comments.push comment
+      withinMultiline = ignore = false
+      commentBuf = ""
+    
     # end single
-    else if withinSingle and not withinMultiline and "\n" is coffee[i]
+    else if withinSingle and not withinMultiline and "\n" is coffee[i] and not escaped
       withinSingle = false
       buf += coffee[i]
+      codeBuf += buf
+      buf = ""
     
     # buffer comment or code
     else
-      buf += coffee[i]
+      if withinSingle
+        buf += coffee[i]
+      else if withinMultiline
+        commentBuf += coffee[i]
+      else 
+        codeBuf += coffee[i]
 
     ++i
   if comments.length is 0
