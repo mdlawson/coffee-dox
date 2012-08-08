@@ -24,7 +24,6 @@ exports.parseComments = (coffee, options) ->
   buf = ""
   codeBuf = ""
   commentBuf = ""
-  ignore = undefined
   escaped = false
   withinMultiline = false
   withinSingle = false
@@ -47,10 +46,6 @@ exports.parseComments = (coffee, options) ->
     if coffee[i] is escaped then escaped = false
     else if coffee[i] is '"' or coffee[i] is "'" or coffee[i] is '`' then escaped = coffee[i]
 
-    #ignore block
-    if coffee[i..i+1] is "#!" then ignore = true; i+=2
-    if coffee[i..i+1] is "#!" and ignore then ignore = false; i+=2
-
     # start comment
     if not withinMultiline and not withinSingle and "#" is coffee[i] and not escaped
       withinSingle = true
@@ -64,15 +59,9 @@ exports.parseComments = (coffee, options) ->
       # code following previous comment
       if codeBuf.trim().length
         if prevComment
-          #lines = codeBuf.trim().split("\n")
-          #initial = parseIndent(lines[0])
-          #console.log "lines:",lines,"init:",initial
-          #i = 0
-          #while i++ < lines.length
-          #  break if parseIndent(lines[i]) is initial
-          #code = lines[0..i].join("\n")
-          prevComment.code = code = codeBuf.trim()
-          prevComment.ctx = exports.parseCodeContext(code)
+          prevComment.code = trimCode(codeBuf,prevComment.indent)
+          prevComment.ctx = exports.parseCodeContext(prevComment.code)
+          console.log prevComment.ctx
         codeBuf = ""
       withinSingle = false
       withinMultiline = true
@@ -84,13 +73,12 @@ exports.parseComments = (coffee, options) ->
       comment.indent = indent
       parent = prevComment or {indent:-1,children:comments}
       until comment.parent?
-        #console.log "parent:",parent,"comment:",comment
         if parent.indent < comment.indent
           comment.parent = parent
           comment.parent.children.push comment
         else
           parent = parent.parent or {indent:-1,children:comments}
-      withinMultiline = ignore = false
+      withinMultiline = false
       commentBuf = ""
       prevComment = comment
     
@@ -107,7 +95,6 @@ exports.parseComments = (coffee, options) ->
         buf += coffee[i]
       else if withinMultiline
         commentBuf += coffee[i]
-      else if ignore
       else
         codeBuf += coffee[i]
 
@@ -121,16 +108,27 @@ exports.parseComments = (coffee, options) ->
         full: ""
         summary: ""
         body: ""
-
+      children: []
       isPrivate: false
 
   
   # trailing code
   if codeBuf.trim().length
     if prevComment
-      prevComment.code = code = codeBuf.trim()
-      prevComment.ctx = exports.parseCodeContext(code)
+      prevComment.code = trimCode(codeBuf,prevComment.indent)
+      prevComment.ctx = exports.parseCodeContext(prevComment.code)
+      console.log prevComment.ctx
   comments
+
+trimCode = (code, indent) ->
+  lines = code.split("\n")
+  result = lines[0][indent..] + "\n"
+  k = 1
+  while k < lines.length
+    if parseIndent(lines[k]) <= indent then break
+    result += lines[k][indent..] + "\n"
+    k++
+  return result
 
 parseIndent = (string) ->
   idt = 0
@@ -256,9 +254,16 @@ exports.parseTagTypes = (str) ->
 
 exports.parseCodeContext = (str) ->
   str = str.split("\n")[0]
+  console.log "parse:",str
+
+  # class definition
+  if /^class *(\w+)/.exec(str)
+    type: "class"
+    name: RegExp.$1
+    string: "class " + RegExp.$1
 
   # function expression
-  if /^(\w+) *= *(\(.*\)|) *->/.exec(str)
+  else if /^(\w+) *= *(\(.*\)|) *->/.exec(str)
     type: "function"
     name: RegExp.$1
     string: RegExp.$1 + "()"
@@ -271,7 +276,7 @@ exports.parseCodeContext = (str) ->
     string: RegExp.$1 + ".prototype." + RegExp.$2 + "()"
   
   # prototype property
-  else if /(\w+)::(\w+) *= *([^\n;]+)/.exec(str)
+  else if /^(\w+)::(\w+) *= *([^\n;]+)/.exec(str)
     type: "property"
     constructor: RegExp.$1
     name: RegExp.$2
@@ -279,19 +284,30 @@ exports.parseCodeContext = (str) ->
     string: RegExp.$1 + ".prototype" + RegExp.$2
   
   # method
-  else if /^(@|\w+.\.)*(\w+) *= *(\(.*\)|) *->/.exec(str)
+  else if /^(\w+)\.(\w+) *= *(\(.*\)|) *->/.exec(str) or /^@(\w+)\.?(\w+) *= *(\(.*\)|) *->/.exec(str)
     type: "method"
     receiver: RegExp.$1
     name: RegExp.$2
     string: RegExp.$1 + "." + RegExp.$2 + "()"
+  else if /^(\w+): *(\(.*\)|) *->/.exec(str)
+    type: "method"
+    receiver: undefined
+    name: RegExp.$1
+    string: RegExp.$1 + "()"
   
   # property
-  else if /^(@|\w+.\.)*(\w+) *= *([^\n;]+)/.exec(str)
+  else if /^(\w+)\.(\w+) *= *([^\n;]+)/.exec(str) or /^@(\w+)\.?(\w+) *= *([^\n;]+)/.exec(str)
     type: "property"
     receiver: RegExp.$1
     name: RegExp.$2
     value: RegExp.$3
     string: RegExp.$1 + "." + RegExp.$2
+  else if /^(\w+): *([^\n;]+)/.exec(str)
+    type: "property"
+    receiver: undefined
+    name: RegExp.$1
+    value: RegExp.$2
+    string: RegExp.$1
   
   # declaration
   else if /^(\w+) *= *([^\n;]+)/.exec(str)
