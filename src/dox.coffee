@@ -20,6 +20,7 @@ exports.parseComments = (coffee, options) ->
   comments = []
   raw = options.raw
   comment = undefined
+  prevComment = undefined
   buf = ""
   codeBuf = ""
   commentBuf = ""
@@ -27,7 +28,6 @@ exports.parseComments = (coffee, options) ->
   escaped = false
   withinMultiline = false
   withinSingle = false
-  prevIndent = 0
   indent = 0
   code = undefined
   i = 0
@@ -47,12 +47,14 @@ exports.parseComments = (coffee, options) ->
     if coffee[i] is escaped then escaped = false
     else if coffee[i] is '"' or coffee[i] is "'" or coffee[i] is '`' then escaped = coffee[i]
 
+    #ignore block
+    if coffee[i..i+1] is "#!" then ignore = true; i+=2
+    if coffee[i..i+1] is "#!" and ignore then ignore = false; i+=2
 
     # start comment
     if not withinMultiline and not withinSingle and "#" is coffee[i] and not escaped
       withinSingle = true
       buf += coffee[i]
-      #ignore = "!" is coffee[i]
 
     # upgrade single to multiline
     else if not withinMultiline and withinSingle and "\n" is coffee[i] and "#" is coffee[i + 1 + indent] and not escaped
@@ -61,10 +63,16 @@ exports.parseComments = (coffee, options) ->
       buf = ""
       # code following previous comment
       if codeBuf.trim().length
-        comment = comments[comments.length - 1]
-        if comment
-          comment.code = code = codeBuf.trim()
-          comment.ctx = exports.parseCodeContext(code)
+        if prevComment
+          #lines = codeBuf.trim().split("\n")
+          #initial = parseIndent(lines[0])
+          #console.log "lines:",lines,"init:",initial
+          #i = 0
+          #while i++ < lines.length
+          #  break if parseIndent(lines[i]) is initial
+          #code = lines[0..i].join("\n")
+          prevComment.code = code = codeBuf.trim()
+          prevComment.ctx = exports.parseCodeContext(code)
         codeBuf = ""
       withinSingle = false
       withinMultiline = true
@@ -73,10 +81,18 @@ exports.parseComments = (coffee, options) ->
     else if withinMultiline and not withinSingle and "\n" is coffee[i] and "#" isnt coffee[i + 1 + indent] and not escaped
       commentBuf = commentBuf.replace(/^ *# ?/gm, "")
       comment = exports.parseComment(commentBuf, options)
-      #comment.ignore = ignore
-      comments.push comment
+      comment.indent = indent
+      parent = prevComment or {indent:-1,children:comments}
+      until comment.parent?
+        #console.log "parent:",parent,"comment:",comment
+        if parent.indent < comment.indent
+          comment.parent = parent
+          comment.parent.children.push comment
+        else
+          parent = parent.parent or {indent:-1,children:comments}
       withinMultiline = ignore = false
       commentBuf = ""
+      prevComment = comment
     
     # end single
     else if withinSingle and not withinMultiline and "\n" is coffee[i] and not escaped
@@ -91,8 +107,11 @@ exports.parseComments = (coffee, options) ->
         buf += coffee[i]
       else if withinMultiline
         commentBuf += coffee[i]
-      else 
+      else if ignore
+      else
         codeBuf += coffee[i]
+
+        
 
     ++i
   if comments.length is 0
@@ -107,14 +126,16 @@ exports.parseComments = (coffee, options) ->
 
   
   # trailing code
-  if buf.trim().length
-    comment = comments[comments.length - 1]
-    code = buf.trim()
-    comment.code = code
-    comment.ctx = exports.parseCodeContext(code)
+  if codeBuf.trim().length
+    if prevComment
+      prevComment.code = code = codeBuf.trim()
+      prevComment.ctx = exports.parseCodeContext(code)
   comments
 
-
+parseIndent = (string) ->
+  idt = 0
+  while string[idt] is " " then idt++
+  return idt
 
 # Parse the given comment `str`.
 #
@@ -134,13 +155,10 @@ exports.parseComments = (coffee, options) ->
 exports.parseComment = (str, options) ->
   str = str.trim()
   options = options or {}
-  comment = tags: []
+  comment = tags: [], children: []
   raw = options.raw
   description = {}
-  
-  # parse comment body
-  # A more detailed insight into this bit of code
-  # @param {DICKS} SICK
+
   description.full = str.split("\n@")[0].replace(/^([A-Z][\w ]+):$/g, "## $1")
   description.summary = description.full.split("\n\n")[0]
   description.body = description.full.split("\n\n").slice(1).join("\n\n")
@@ -176,6 +194,11 @@ exports.parseTag = (str) ->
     when "param"
       tag.types = exports.parseTagTypes(parts.shift())
       tag.name = parts.shift() or ""
+      tag.description = parts.join(" ")
+    when "option"
+      tag.object = parts.shift()
+      tag.types = exports.parseTagTypes(parts.shift())
+      tag.name = parts.shift()
       tag.description = parts.join(" ")
     when "return"
       tag.types = exports.parseTagTypes(parts.shift())
