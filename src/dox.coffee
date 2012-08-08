@@ -61,7 +61,6 @@ exports.parseComments = (coffee, options) ->
         if prevComment
           prevComment.code = trimCode(codeBuf,prevComment.indent)
           prevComment.ctx = exports.parseCodeContext(prevComment.code)
-          console.log prevComment.ctx
         codeBuf = ""
       withinSingle = false
       withinMultiline = true
@@ -117,7 +116,6 @@ exports.parseComments = (coffee, options) ->
     if prevComment
       prevComment.code = trimCode(codeBuf,prevComment.indent)
       prevComment.ctx = exports.parseCodeContext(prevComment.code)
-      console.log prevComment.ctx
   comments
 
 trimCode = (code, indent) ->
@@ -254,7 +252,6 @@ exports.parseTagTypes = (str) ->
 
 exports.parseCodeContext = (str) ->
   str = str.split("\n")[0]
-  console.log "parse:",str
 
   # class definition
   if /^class *(\w+)/.exec(str)
