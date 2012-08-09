@@ -120,11 +120,11 @@ exports.parseComments = (coffee, options) ->
 
 trimCode = (code, indent) ->
   lines = code.split("\n")
-  result = lines[0][indent..] + "\n"
+  result = lines[0][indent..]
   k = 1
   while k < lines.length
     if parseIndent(lines[k]) <= indent then break
-    result += lines[k][indent..] + "\n"
+    result += "\n" + lines[k][indent..]
     k++
   return result
 
