@@ -1,6 +1,7 @@
 # Module dependencies. 
 markdown = require("github-flavored-markdown").parse
 escape = require("./utils").escape
+{spawn} = require "child_process"
 
 #Library version.
 exports.version = "0.3.1"
@@ -13,12 +14,14 @@ exports.version = "0.3.1"
 # @return {Array}
 # @see exports.parseComment
 # @api public
-exports.parseComments = (coffee, options) ->
+exports.parseComments = (coffee, options, callback) ->
   options = options or {}
   coffee = coffee.replace(/\r\n/g, "\n")
   coffee = coffee.replace(/\t/g, "  ")
   comments = []
+  highlighted = []
   raw = options.raw
+  highlight = options.highlight
   comment = undefined
   prevComment = undefined
   buf = ""
@@ -116,7 +119,8 @@ exports.parseComments = (coffee, options) ->
     if prevComment
       prevComment.code = trimCode(codeBuf,prevComment.indent)
       prevComment.ctx = exports.parseCodeContext(prevComment.code)
-  comments
+
+  if highlight then highlightCode(comments,callback) else callback comments
 
 trimCode = (code, indent) ->
   lines = code.split("\n")
@@ -132,6 +136,36 @@ parseIndent = (string) ->
   idt = 0
   while string[idt] is " " then idt++
   return idt
+
+highlightCode = (comments,cb) ->
+  pyg = spawn 'pygmentize', ['-l', 'coffee-script', '-f', 'html', '-O', 'encoding=utf-8,tabsize=2']
+  output = ''
+  pyg.stderr.on 'data', (error) -> console.error error.toString() if error
+  pyg.stdin.on 'error', (error) -> console.error "could not use pygments to highlight the source"; output = code
+  pyg.stdout.on 'data', (result) -> output += result if result
+  pyg.on 'exit', ->
+    output = output.replace('<div class="highlight"><pre>', '').replace('</pre></div>', '').replace(/\r\n/g, "\n")
+    html = output.split /<span class="c1">#DELIM#<\/span>\n/
+    html = (el for el in html when el)
+    comments = codeUnpack comments,html
+    cb comments
+  if pyg.stdin.writable
+    pyg.stdin.write codePack(comments)
+    pyg.stdin.end()
+
+codePack = (root) ->
+  code = ''
+  for child in root
+    if child.code then code += child.code + "#DELIM#\n"
+    if child.children.length then code += codePack(child.children) + "#DELIM#\n"
+  return code
+
+codeUnpack = (root,code) ->
+  for child in root
+    if child.code then child.code = code.shift()
+    if child.children.length then child.children = codeUnpack(child.children,code)
+  return root
+
 
 # Parse the given comment `str`.
 #
