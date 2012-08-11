@@ -63,7 +63,7 @@ exports.parseComments = (coffee, options, callback) ->
       if codeBuf.trim().length
         if prevComment
           prevComment.code = trimCode(codeBuf,prevComment.indent)
-          prevComment.ctx = exports.parseCodeContext(prevComment.code)
+          prevComment.ctx = exports.parseCodeContext(prevComment.code,prevComment.parent)
         codeBuf = ""
       withinSingle = false
       withinMultiline = true
@@ -118,7 +118,7 @@ exports.parseComments = (coffee, options, callback) ->
   if codeBuf.trim().length
     if prevComment
       prevComment.code = trimCode(codeBuf,prevComment.indent)
-      prevComment.ctx = exports.parseCodeContext(prevComment.code)
+      prevComment.ctx = exports.parseCodeContext(prevComment.code,prevComment.parent)
 
   if highlight then highlightCode(comments,callback) else callback comments
 
@@ -198,6 +198,15 @@ exports.parseComment = (str, options) ->
   if ~str.indexOf("\n@")
     tags = "@" + str.split("\n@").slice(1).join("\n@")
     comment.tags = tags.split("\n").map(exports.parseTag)
+    
+    param = {}
+    for tag in comment.tags
+      if tag.type is "param" then param = tag
+      else if tag.type is "option"
+        param.options ?= []
+        param.options.push tag
+    comment.tags = (tag for tag in comment.tags when tag.type isnt "option")
+
     comment.isPrivate = comment.tags.some((tag) ->
       "api" is tag.type and "private" is tag.visibility
     )
@@ -226,7 +235,6 @@ exports.parseTag = (str) ->
       tag.name = parts.shift() or ""
       tag.description = parts.join(" ")
     when "option"
-      tag.object = parts.shift()
       tag.types = exports.parseTagTypes(parts.shift())
       tag.name = parts.shift()
       tag.description = parts.join(" ")
@@ -284,7 +292,7 @@ exports.parseTagTypes = (str) ->
 # @return {Object}
 # @api public
 
-exports.parseCodeContext = (str) ->
+exports.parseCodeContext = (str,parent) ->
   str = str.split("\n")[0]
 
   # class definition
@@ -322,7 +330,7 @@ exports.parseCodeContext = (str) ->
     string: RegExp.$1 + "." + RegExp.$2 + "()"
   else if /^(\w+): *(\(.*\)|) *->/.exec(str)
     type: "method"
-    receiver: undefined
+    receiver: parent.ctx.name
     name: RegExp.$1
     string: RegExp.$1 + "()"
   
@@ -335,7 +343,7 @@ exports.parseCodeContext = (str) ->
     string: RegExp.$1 + "." + RegExp.$2
   else if /^(\w+): *([^\n;]+)/.exec(str)
     type: "property"
-    receiver: undefined
+    receiver: parent.ctx.name
     name: RegExp.$1
     value: RegExp.$2
     string: RegExp.$1
@@ -346,3 +354,10 @@ exports.parseCodeContext = (str) ->
     name: RegExp.$1
     value: RegExp.$2
     string: RegExp.$1
+
+  else
+    type: ""
+    name: ""
+    value: ""
+    string: ""
+
