@@ -1,5 +1,5 @@
 # Module dependencies. 
-markdown = require("github-flavored-markdown").parse
+marked = require("marked")
 escape = require("./utils").escape
 {spawn} = require "child_process"
 
@@ -46,16 +46,16 @@ exports.parseComments = (coffee, options, callback) ->
         j++
 
     # handle escape chars
-    if coffee[i] is escaped then escaped = false
-    else if coffee[i] is '"' or coffee[i] is "'" or coffee[i] is '`' then escaped = coffee[i]
+    #if coffee[i] is escaped then escaped = false
+    #else if coffee[i] is '"' or coffee[i] is "'" then escaped = coffee[i]
 
     # start comment
-    if not withinMultiline and not withinSingle and "#" is coffee[i] and not escaped
+    if not withinMultiline and not withinSingle and "#" is coffee[i] #and not escaped
       withinSingle = true
       buf += coffee[i]
 
     # upgrade single to multiline
-    else if not withinMultiline and withinSingle and "\n" is coffee[i] and "#" is coffee[i + 1 + indent] and not escaped
+    else if not withinMultiline and withinSingle and "\n" is coffee[i] and "#" is coffee[i + 1 + indent] #and not escaped
       buf += coffee[i]
       commentBuf += buf
       buf = ""
@@ -69,7 +69,7 @@ exports.parseComments = (coffee, options, callback) ->
       withinMultiline = true
     
     # end comment
-    else if withinMultiline and not withinSingle and "\n" is coffee[i] and "#" isnt coffee[i + 1 + indent] and not escaped
+    else if withinMultiline and not withinSingle and "\n" is coffee[i] and "#" isnt coffee[i + 1 + indent] #and not escaped
       commentBuf = commentBuf.replace(/^ *# ?/gm, "")
       comment = exports.parseComment(commentBuf, options)
       comment.indent = indent
@@ -85,7 +85,7 @@ exports.parseComments = (coffee, options, callback) ->
       prevComment = comment
     
     # end single
-    else if withinSingle and not withinMultiline and "\n" is coffee[i] and not escaped
+    else if withinSingle and not withinMultiline and "\n" is coffee[i] #and not escaped
       withinSingle = false
       buf += coffee[i]
       codeBuf += buf
@@ -107,7 +107,7 @@ exports.parseComments = (coffee, options, callback) ->
     comments.push
       tags: []
       description:
-        full: ""
+        full: "Nothing to see here..."
         summary: ""
         body: ""
       children: []
@@ -213,9 +213,9 @@ exports.parseComment = (str, options) ->
   
   # markdown
   unless raw
-    description.full = markdown(description.full)
-    description.summary = markdown(description.summary)
-    description.body = markdown(description.body)
+    description.full = marked(description.full)
+    description.summary = marked(description.summary)
+    description.body = marked(description.body)
   comment
 
 
@@ -296,7 +296,7 @@ exports.parseCodeContext = (str,parent) ->
   str = str.split("\n")[0]
 
   # class definition
-  if /^class *(\w+)/.exec(str)
+  if /^class *([^\n; ]+)/.exec(str)
     type: "class"
     name: RegExp.$1
     string: "class " + RegExp.$1
