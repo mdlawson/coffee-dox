@@ -107,7 +107,7 @@ exports.parseComments = (coffee, options, callback) ->
     comments.push
       tags: []
       description:
-        full: "Nothing to see here..."
+        full: ""
         summary: ""
         body: ""
       children: []
